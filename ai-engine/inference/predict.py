@@ -1,58 +1,88 @@
-from pathlib import Path
-import pickle
+from __future__ import annotations
 
-from fastapi import FastAPI
-from pydantic import BaseModel
+import pickle
+import sys
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+COMMON_DIR = Path(__file__).resolve().parents[1] / "common"
+if str(COMMON_DIR) not in sys.path:
+    sys.path.append(str(COMMON_DIR))
+
+from preprocessing import build_input_frame
 
 
 MODEL_DIR = Path(__file__).resolve().parents[1] / "models"
 
 
-class TrafficFeatures(BaseModel):
-    request_count: int
-    user_agent_length: int
-    path_risk: int
+class PredictionRequest(BaseModel):
+    features: dict[str, Any] = Field(default_factory=dict)
 
 
-def load_artifacts():
-    if not (MODEL_DIR / "scaler.pkl").exists() or not (MODEL_DIR / "model.pkl").exists():
-        return None, None
+def load_bundle():
+    bundle_file = MODEL_DIR / "model_bundle.pkl"
+    if not bundle_file.exists():
+        return None
 
-    with open(MODEL_DIR / "scaler.pkl", "rb") as scaler_file:
-        scaler = pickle.load(scaler_file)
-    with open(MODEL_DIR / "model.pkl", "rb") as model_file:
-        model = pickle.load(model_file)
-    return scaler, model
+    with open(bundle_file, "rb") as handle:
+        return pickle.load(handle)
 
 
-scaler, model = load_artifacts()
-app = FastAPI(title="SHIELD AI Engine", version="1.0.0")
+bundle = load_bundle()
+app = FastAPI(title="SHIELD AI Engine", version="2.0.0")
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "model_loaded": bundle is not None,
+        "winner": bundle.get("winner") if bundle else None,
+    }
+
+
+@app.get("/metadata")
+def metadata():
+    if bundle is None:
+        raise HTTPException(status_code=404, detail="No trained model bundle found.")
+
+    return {
+        "winner": bundle["winner"],
+        "feature_columns": bundle["feature_columns"],
+        "results": bundle["results"],
+        "dataset_file": bundle["dataset_file"],
+    }
 
 
 @app.post("/predict")
-def predict(features: TrafficFeatures):
-    if scaler is None or model is None:
-        score = min(
-            1.0,
-            (features.request_count / 120)
-            + (0.25 if features.user_agent_length < 10 else 0.0)
-            + (0.25 if features.path_risk else 0.0),
-        )
-        prediction = int(score >= 0.6)
-        probability = score
+def predict(request: PredictionRequest):
+    if bundle is None:
+        raise HTTPException(status_code=503, detail="No trained model available. Run training first.")
+
+    input_frame = build_input_frame([request.features], bundle["feature_columns"])
+    model = bundle["model"]
+    prediction = int(model.predict(input_frame)[0])
+
+    if hasattr(model, "predict_proba"):
+        probability = float(model.predict_proba(input_frame)[0][1])
     else:
-        vector = [[features.request_count, features.user_agent_length, features.path_risk]]
-        scaled = scaler.transform(vector)
-        prediction = int(model.predict(scaled)[0])
-        probability = float(model.predict_proba(scaled)[0][1])
+        probability = float(prediction)
+
+    if probability >= 0.85:
+        threat_level = "critical"
+    elif probability >= 0.65:
+        threat_level = "high"
+    elif probability >= 0.4:
+        threat_level = "medium"
+    else:
+        threat_level = "low"
 
     return {
         "prediction": prediction,
         "probability": round(probability, 4),
-        "threat_level": "high" if probability >= 0.6 else "low",
+        "threat_level": threat_level,
+        "model": bundle["winner"],
     }
