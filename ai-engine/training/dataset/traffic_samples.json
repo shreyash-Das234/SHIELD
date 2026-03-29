@@ -1,0 +1,8 @@
+[
+  { "request_count": 4, "user_agent_length": 120, "path_risk": 0, "label": 0 },
+  { "request_count": 12, "user_agent_length": 90, "path_risk": 0, "label": 0 },
+  { "request_count": 30, "user_agent_length": 40, "path_risk": 0, "label": 0 },
+  { "request_count": 75, "user_agent_length": 9, "path_risk": 1, "label": 1 },
+  { "request_count": 95, "user_agent_length": 12, "path_risk": 1, "label": 1 },
+  { "request_count": 120, "user_agent_length": 4, "path_risk": 1, "label": 1 }
+]

@@ -1,9 +1,12 @@
 {
+  "name": "shield",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "dev:client": "npm --prefix client run dev",
+    "dev:server": "npm --prefix server run dev"
+  },
   "dependencies": {
-    "flask": "^0.2.10",
-    "numpy": "^0.0.1",
-    "pandas": "^0.0.3",
-    "requests": "^0.3.0",
-    "scikit-learn": "^0.1.0"
+    "tailwind": "^4.0.0"
   }
 }
